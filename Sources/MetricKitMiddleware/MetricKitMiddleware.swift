@@ -10,11 +10,10 @@ public enum MetricKitAction {
     case logEnd(category: String, name: StaticString)
 }
 
-public class MetricKitMiddleware: Middleware {
+public class MetricKitMiddleware: MiddlewareProtocol {
     public typealias InputActionType = MetricKitAction
     public typealias OutputActionType = MetricKitAction
     public typealias StateType = Void
-    private var output: AnyActionHandler<MetricKitAction>?
     private var metricsSubscriber: Subscriber?
     private var logHandlers: [String: OSLog] = [:]
     private let onPayloads: ([Data]) -> Void
@@ -23,32 +22,29 @@ public class MetricKitMiddleware: Middleware {
         self.onPayloads = onPayloads
     }
 
-    public func receiveContext(getState: @escaping GetState<Void>, output: AnyActionHandler<MetricKitAction>) {
-        self.output = output
-    }
-
-    public func handle(action: MetricKitAction, from dispatcher: ActionSource, afterReducer: inout AfterReducer) {
-        guard let output = self.output else { return }
-
-        switch action {
-        case .start:
-            let subscriber = Subscriber { payloads in
-                output.dispatch(.receivePayloads(payloads.map { $0.jsonRepresentation() } ))
+    public func handle(action: MetricKitAction, from dispatcher: ActionSource, state: @escaping GetState<Void>) -> IO<MetricKitAction> {
+        IO { [weak self] output in
+            guard let self = self else { return }
+            switch action {
+            case .start:
+                let subscriber = Subscriber { payloads in
+                    output.dispatch(.receivePayloads(payloads.map { $0.jsonRepresentation() } ))
+                }
+                MXMetricManager.shared.add(subscriber)
+                self.metricsSubscriber = subscriber
+            case .stop:
+                guard let subscriber = self.metricsSubscriber else { return }
+                MXMetricManager.shared.remove(subscriber)
+                self.metricsSubscriber = nil
+            case let .logBegin(category, name):
+                mxSignpost(.begin, log: self.handler(for: category), name: name)
+            case let .logEvent(category, name):
+                mxSignpost(.event, log: self.handler(for: category), name: name)
+            case let .logEnd(category, name):
+                mxSignpost(.end, log: self.handler(for: category), name: name)
+            case let .receivePayloads(payloads):
+                self.onPayloads(payloads)
             }
-            MXMetricManager.shared.add(subscriber)
-            self.metricsSubscriber = subscriber
-        case .stop:
-            guard let subscriber = self.metricsSubscriber else { return }
-            MXMetricManager.shared.remove(subscriber)
-            metricsSubscriber = nil
-        case let .logBegin(category, name):
-            mxSignpost(.begin, log: handler(for: category), name: name)
-        case let .logEvent(category, name):
-            mxSignpost(.event, log: handler(for: category), name: name)
-        case let .logEnd(category, name):
-            mxSignpost(.end, log: handler(for: category), name: name)
-        case let .receivePayloads(payloads):
-            onPayloads(payloads)
         }
     }
 

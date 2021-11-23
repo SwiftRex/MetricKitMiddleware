@@ -12,7 +12,7 @@ let package = Package(
         .library(name: "MetricKitReactiveSwiftMiddleware", targets: ["MetricKitReactiveSwiftMiddleware"])
     ],
     dependencies: [
-        .package(url: "https://github.com/SwiftRex/SwiftRex.git", from: "0.8.2")
+        .package(url: "https://github.com/SwiftRex/SwiftRex.git", from: "0.8.8")
     ],
     targets: [
         .target(name: "MetricKitCombineMiddleware", dependencies: [.product(name: "CombineRex", package: "SwiftRex")]),
